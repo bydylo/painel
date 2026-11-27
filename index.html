@@ -1,3 +1,4 @@
+HTML
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -281,4 +282,399 @@
 
     function mostrarStatus(mensagem, tipo = "info") {
       elStatus.textContent = mensagem;
-      elStatus.className
+      elStatus.className = `status show ${tipo}`;
+    }
+
+    function definirBloqueio(bloqueado) {
+      emOperacao = bloqueado;
+      document.querySelectorAll("button").forEach((btn) => {
+        btn.disabled = bloqueado;
+      });
+    }
+
+    function obterConfig() {
+      return {
+        repo: elRepo.value.trim(),
+        arquivo: elArquivo.value.trim().replace(/^\/+/, ""),
+        token: elToken.value.trim()
+      };
+    }
+
+    function salvarConfigSessao() {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(obterConfig()));
+    }
+
+    function restaurarConfigSessao() {
+      const salvo = sessionStorage.getItem(STORAGE_KEY);
+      if (!salvo) return false;
+      try {
+        const cfg = JSON.parse(salvo);
+        if (cfg.repo) elRepo.value = cfg.repo;
+        if (cfg.arquivo) elArquivo.value = cfg.arquivo;
+        if (cfg.token) elToken.value = cfg.token;
+        return Boolean(cfg.repo && cfg.arquivo && cfg.token);
+      } catch {
+        return false;
+      }
+    }
+
+    function base64ParaUtf8(b64) {
+      const limpo = b64.replace(/\s/g, "");
+      const binario = atob(limpo);
+      const bytes = Uint8Array.from(binario, (ch) => ch.codePointAt(0));
+      return new TextDecoder("utf-8").decode(bytes);
+    }
+
+    function utf8ParaBase64(texto) {
+      const bytes = new TextEncoder().encode(texto);
+      let binario = "";
+      for (const byte of bytes) {
+        binario += String.fromCodePoint(byte);
+      }
+      return btoa(binario);
+    }
+
+    function unixParaInputLocal(segundos) {
+      if (!segundos || segundos <= 0) return "";
+      const d = new Date(segundos * 1000);
+      if (Number.isNaN(d.getTime())) return "";
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function inputLocalParaUnix(valor) {
+      if (!valor) return 0;
+      const ms = new Date(valor).getTime();
+      return Number.isNaN(ms) ? 0 : Math.floor(ms / 1000);
+    }
+
+    function criarBadgeExpiracao(expira) {
+      const span = document.createElement("span");
+      const agora = Math.floor(Date.now() / 1000);
+
+      if (!expira || expira <= 0) {
+        span.className = "badge ilimitado";
+        span.textContent = "Ilimitado";
+      } else if (expira < agora) {
+        span.className = "badge expirado";
+        span.textContent = "Expirado";
+      } else {
+        span.className = "badge ativo";
+        span.textContent = `Ativo até ${new Date(expira * 1000).toLocaleString("pt-BR")}`;
+      }
+      return span;
+    }
+
+    async function carregarUsuarios() {
+      const { repo, arquivo, token } = obterConfig();
+      if (!repo || !arquivo || !token) {
+        mostrarStatus("Preencha repositório, arquivo e token para continuar.", "error");
+        return;
+      }
+
+      definirBloqueio(true);
+      mostrarStatus("Carregando usuários via GitHub API...", "info");
+
+      try {
+        const res = await fetch(`https://api.github.com/repos/${repo}/contents/${arquivo}`, {
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/vnd.github+json"
+          }
+        });
+
+        if (res.status === 404) {
+          usuarios = {};
+          ultimoSha = null;
+          renderizarTabela();
+          mostrarStatus(`Arquivo "${arquivo}" não encontrado. Ele será criado no primeiro cadastro.`, "info");
+          return;
+        }
+
+        if (!res.ok) {
+          const erro = await res.json().catch(() => ({}));
+          throw new Error(erro.message || `Erro HTTP ${res.status}`);
+        }
+
+        const json = await res.json();
+        const texto = base64ParaUtf8(json.content || "");
+        const dados = texto.trim() ? JSON.parse(texto) : {};
+
+        if (!dados || typeof dados !== "object" || Array.isArray(dados)) {
+          throw new Error("O arquivo usuarios.json não contém um objeto JSON válido.");
+        }
+
+        usuarios = dados;
+        ultimoSha = json.sha;
+        salvarConfigSessao();
+        renderizarTabela();
+        mostrarStatus(`Carregado com sucesso (${Object.keys(usuarios).length} usuário(s)).`, "success");
+      } catch (err) {
+        mostrarStatus(`Falha ao carregar: ${err.message}`, "error");
+      } finally {
+        definirBloqueio(false);
+      }
+    }
+
+    async function persistirUsuarios(novoEstado, mensagemCommit) {
+      const { repo, arquivo, token } = obterConfig();
+      if (!repo || !arquivo || !token) {
+        mostrarStatus("Configure o repositório e o token antes de salvar.", "error");
+        return false;
+      }
+
+      definirBloqueio(true);
+      mostrarStatus("Salvando alterações no GitHub...", "info");
+
+      try {
+        const conteudo = JSON.stringify(novoEstado, null, 2) + "\n";
+        const payload = {
+          message: mensagemCommit,
+          content: utf8ParaBase64(conteudo)
+        };
+        if (ultimoSha) {
+          payload.sha = ultimoSha;
+        }
+
+        const res = await fetch(`https://api.github.com/repos/${repo}/contents/${arquivo}`, {
+          method: "PUT",
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/vnd.github+json",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.status === 409) {
+          mostrarStatus("Conflito de versão: o arquivo foi alterado fora desta aba. Recarregando...", "error");
+          await carregarUsuarios();
+          return false;
+        }
+
+        if (!res.ok) {
+          const erro = await res.json().catch(() => ({}));
+          throw new Error(erro.message || `Erro HTTP ${res.status}`);
+        }
+
+        const json = await res.json();
+        ultimoSha = json.content?.sha || ultimoSha;
+        usuarios = novoEstado;
+        renderizarTabela();
+        mostrarStatus("Alterações salvas com sucesso no GitHub.", "success");
+        return true;
+      } catch (err) {
+        mostrarStatus(`Erro ao salvar: ${err.message}`, "error");
+        renderizarTabela();
+        return false;
+      } finally {
+        definirBloqueio(false);
+      }
+    }
+
+    function clonarUsuarios() {
+      return JSON.parse(JSON.stringify(usuarios));
+    }
+
+    function renderizarTabela() {
+      elBody.replaceChildren();
+      const entradas = Object.entries(usuarios);
+
+      if (entradas.length === 0) {
+        const tr = document.createElement("tr");
+        tr.className = "empty-row";
+        const td = document.createElement("td");
+        td.colSpan = 4;
+        td.textContent = "Nenhum usuário cadastrado.";
+        tr.appendChild(td);
+        elBody.appendChild(tr);
+        return;
+      }
+
+      entradas.forEach(([userOriginal, dados]) => {
+        const tr = document.createElement("tr");
+        const expiraInicial = Number.isFinite(Number(dados?.expira)) ? Number(dados.expira) : 0;
+
+        // Coluna Usuário
+        const tdUser = document.createElement("td");
+        const inputUser = document.createElement("input");
+        inputUser.type = "text";
+        inputUser.value = userOriginal;
+        tdUser.appendChild(inputUser);
+
+        // Coluna Senha
+        const tdSenha = document.createElement("td");
+        const inputSenha = document.createElement("input");
+        inputSenha.type = "text";
+        inputSenha.value = dados?.senha ?? "";
+        tdSenha.appendChild(inputSenha);
+
+        // Coluna Expiração
+        const tdExpira = document.createElement("td");
+        const expiraWrap = document.createElement("div");
+        expiraWrap.className = "expira-cell";
+
+        const inputData = document.createElement("input");
+        inputData.type = "datetime-local";
+        inputData.value = unixParaInputLocal(expiraInicial);
+
+        const atalhos = document.createElement("div");
+        atalhos.className = "expira-atalhos";
+
+        let badge = criarBadgeExpiracao(expiraInicial);
+
+        const btnMais30 = document.createElement("button");
+        btnMais30.type = "button";
+        btnMais30.className = "btn-small";
+        btnMais30.textContent = "+30d";
+
+        const btnIlimitado = document.createElement("button");
+        btnIlimitado.type = "button";
+        btnIlimitado.className = "btn-small";
+        btnIlimitado.textContent = "Ilimitado";
+
+        atalhos.append(btnMais30, btnIlimitado, badge);
+        expiraWrap.append(inputData, atalhos);
+        tdExpira.appendChild(expiraWrap);
+
+        // Coluna Ações
+        const tdAcoes = document.createElement("td");
+        const acoesWrap = document.createElement("div");
+        acoesWrap.className = "actions";
+
+        const btnSalvar = document.createElement("button");
+        btnSalvar.type = "button";
+        btnSalvar.className = "btn-primary btn-small";
+        btnSalvar.textContent = "Salvar";
+
+        const btnRemover = document.createElement("button");
+        btnRemover.type = "button";
+        btnRemover.className = "btn-danger btn-small";
+        btnRemover.textContent = "Remover";
+
+        acoesWrap.append(btnSalvar, btnRemover);
+        tdAcoes.appendChild(acoesWrap);
+
+        const marcarAlterado = () => {
+          tr.classList.add("alterado");
+          const novoExpira = inputLocalParaUnix(inputData.value);
+          const novoBadge = criarBadgeExpiracao(novoExpira);
+          badge.replaceWith(novoBadge);
+          badge = novoBadge;
+        };
+
+        inputUser.addEventListener("input", marcarAlterado);
+        inputSenha.addEventListener("input", marcarAlterado);
+        inputData.addEventListener("change", marcarAlterado);
+
+        btnMais30.addEventListener("click", () => {
+          const agora = Math.floor(Date.now() / 1000);
+          const atual = inputLocalParaUnix(inputData.value);
+          const base = atual > agora ? atual : agora;
+          inputData.value = unixParaInputLocal(base + 30 * 24 * 3600);
+          marcarAlterado();
+        });
+
+        btnIlimitado.addEventListener("click", () => {
+          inputData.value = "";
+          marcarAlterado();
+        });
+
+        btnSalvar.addEventListener("click", async () => {
+          if (emOperacao) return;
+
+          const novoUser = inputUser.value.trim();
+          const novaSenha = inputSenha.value.trim();
+          const novoExpira = inputLocalParaUnix(inputData.value);
+
+          if (!novoUser || !novaSenha) {
+            mostrarStatus("Usuário e senha não podem ficar vazios.", "error");
+            return;
+          }
+
+          if (novoUser !== userOriginal && Object.prototype.hasOwnProperty.call(usuarios, novoUser)) {
+            mostrarStatus(`O usuário "${novoUser}" já existe.`, "error");
+            return;
+          }
+
+          const novoEstado = clonarUsuarios();
+          if (novoUser !== userOriginal) {
+            delete novoEstado[userOriginal];
+          }
+          novoEstado[novoUser] = { senha: novaSenha, expira: novoExpira };
+
+          await persistirUsuarios(novoEstado, `Atualizar usuário ${novoUser}`);
+        });
+
+        btnRemover.addEventListener("click", async () => {
+          if (emOperacao) return;
+          if (!confirm(`Remover o usuário "${userOriginal}"?`)) return;
+
+          const novoEstado = clonarUsuarios();
+          delete novoEstado[userOriginal];
+          await persistirUsuarios(novoEstado, `Remover usuário ${userOriginal}`);
+        });
+
+        tr.append(tdUser, tdSenha, tdExpira, tdAcoes);
+        elBody.appendChild(tr);
+      });
+    }
+
+    elFormConfig.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (!emOperacao) carregarUsuarios();
+    });
+
+    elBtnSair.addEventListener("click", () => {
+      sessionStorage.removeItem(STORAGE_KEY);
+      elToken.value = "";
+      usuarios = {};
+      ultimoSha = null;
+      renderizarTabela();
+      mostrarStatus("Token removido da sessão.", "info");
+    });
+
+    elFormNovo.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (emOperacao) return;
+
+      const user = document.getElementById("novoUser").value.trim();
+      const senha = document.getElementById("novaSenha").value.trim();
+      const horas = Number.parseInt(document.getElementById("novaValidade").value, 10);
+
+      if (!user || !senha) {
+        mostrarStatus("Usuário e senha são obrigatórios.", "error");
+        return;
+      }
+
+      if (Number.isNaN(horas) || horas < 0) {
+        mostrarStatus("Informe uma validade em horas igual ou maior que 0.", "error");
+        return;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(usuarios, user)) {
+        mostrarStatus(`O usuário "${user}" já está cadastrado. Edite-o diretamente na tabela.`, "error");
+        return;
+      }
+
+      const agora = Math.floor(Date.now() / 1000);
+      const expira = horas > 0 ? agora + horas * 3600 : 0;
+
+      const novoEstado = clonarUsuarios();
+      novoEstado[user] = { senha, expira };
+
+      const salvou = await persistirUsuarios(novoEstado, `Adicionar usuário ${user}`);
+      if (salvou) {
+        elFormNovo.reset();
+        document.getElementById("novaValidade").value = "0";
+      }
+    });
+
+    if (restaurarConfigSessao()) {
+      carregarUsuarios();
+    }
+  </script>
+</body>
+</html>
