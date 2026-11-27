@@ -56,6 +56,17 @@
     .status.success { background: #dafbe1; border: 1px solid #4ac26b; color: #116329; }
     .status.error { background: #ffebe9; border: 1px solid #ff8182; color: #a40e26; }
 
+    .inline-msg {
+      margin-top: 10px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      display: none;
+    }
+    .inline-msg.show { display: block; }
+    .inline-msg.info { color: #0550ae; }
+    .inline-msg.success { color: #116329; }
+    .inline-msg.error { color: #a40e26; }
+
     .card {
       background: var(--card);
       border: 1px solid var(--border);
@@ -202,24 +213,24 @@
 
     <div id="status" class="status" role="status" aria-live="polite"></div>
 
-    <form id="formConfig" class="card">
+    <form id="formConfig" class="card" novalidate>
       <h2>Conexão com o GitHub</h2>
       <div class="grid">
         <label>
           Repositório (usuario/repo)
-          <input type="text" id="cfgRepo" value="bydylo/painel" required />
+          <input type="text" id="cfgRepo" value="bydylo/painel" />
         </label>
         <label>
           Branch
-          <input type="text" id="cfgBranch" value="main" required />
+          <input type="text" id="cfgBranch" value="main" />
         </label>
         <label>
           Arquivo JSON
-          <input type="text" id="cfgArquivo" value="usuarios.json" required />
+          <input type="text" id="cfgArquivo" value="usuarios.json" />
         </label>
         <label>
           Token (PAT com permissão Contents)
-          <input type="password" id="cfgToken" placeholder="Cole seu github_pat_ ou ghp_..." required />
+          <input type="password" id="cfgToken" placeholder="Cole seu github_pat_ ou ghp_..." />
         </label>
         <div class="actions">
           <button type="submit" id="btnConectar" class="btn-primary">Conectar / Recarregar</button>
@@ -228,25 +239,26 @@
       </div>
     </form>
 
-    <form id="formNovo" class="card">
+    <form id="formNovo" class="card" novalidate>
       <h2>Adicionar Novo Usuário</h2>
       <div class="grid">
         <label>
           Usuário
-          <input type="text" id="novoUser" required autocomplete="off" />
+          <input type="text" id="novoUser" autocomplete="off" />
         </label>
         <label>
           Senha
-          <input type="text" id="novaSenha" required autocomplete="off" />
+          <input type="text" id="novaSenha" autocomplete="off" />
         </label>
         <label>
-          Validade (em horas, 0 = ilimitado)
-          <input type="number" id="novaValidade" value="0" min="0" step="1" required />
+          Validade (em horas, 0 ou vazio = ilimitado)
+          <input type="number" id="novaValidade" value="0" min="0" inputmode="numeric" />
         </label>
         <div>
-          <button type="submit" class="btn-primary">Adicionar Usuário</button>
+          <button type="submit" id="btnAdicionar" class="btn-primary">Adicionar Usuário</button>
         </div>
       </div>
+      <div id="msgNovo" class="inline-msg" aria-live="polite"></div>
     </form>
 
     <div class="table-wrapper">
@@ -276,10 +288,12 @@
     let emOperacao = false;
 
     const elStatus = document.getElementById("status");
+    const elMsgNovo = document.getElementById("msgNovo");
     const elBody = document.getElementById("usuariosBody");
     const elFormConfig = document.getElementById("formConfig");
     const elFormNovo = document.getElementById("formNovo");
     const elBtnConectar = document.getElementById("btnConectar");
+    const elBtnAdicionar = document.getElementById("btnAdicionar");
     const elBtnSair = document.getElementById("btnSair");
 
     const elRepo = document.getElementById("cfgRepo");
@@ -289,15 +303,21 @@
 
     function mostrarStatus(mensagem, tipo = "info") {
       elStatus.textContent = mensagem;
-      elStatus.className = `status show ${tipo}`;
+      elStatus.className = "status show " + tipo;
     }
 
-    // Exibe qualquer erro inesperado na tela (útil no celular)
+    function mostrarMsgNovo(mensagem, tipo = "info") {
+      elMsgNovo.textContent = mensagem;
+      elMsgNovo.className = "inline-msg show " + tipo;
+    }
+
     window.addEventListener("error", (ev) => {
-      mostrarStatus(`Erro no navegador: ${ev.message}`, "error");
+      mostrarStatus("Erro no navegador: " + ev.message, "error");
     });
+
     window.addEventListener("unhandledrejection", (ev) => {
-      mostrarStatus(`Erro inesperado: ${ev.reason?.message || ev.reason}`, "error");
+      const detalhe = ev.reason && ev.reason.message ? ev.reason.message : String(ev.reason);
+      mostrarStatus("Erro inesperado: " + detalhe, "error");
     });
 
     function definirBloqueio(bloqueado, textoBotao = "Conectar / Recarregar") {
@@ -306,6 +326,7 @@
         btn.disabled = bloqueado;
       });
       elBtnConectar.textContent = bloqueado ? textoBotao : "Conectar / Recarregar";
+      elBtnAdicionar.textContent = bloqueado ? "Aguarde..." : "Adicionar Usuário";
     }
 
     function obterConfig() {
@@ -320,9 +341,7 @@
     function salvarConfigSessao() {
       try {
         sessionStorage.setItem(STORAGE_KEY, JSON.stringify(obterConfig()));
-      } catch {
-        // Ignora se o navegador bloquear sessionStorage (ex: modo restrito ou file://)
-      }
+      } catch (e) {}
     }
 
     function restaurarConfigSessao() {
@@ -335,389 +354,10 @@
         if (cfg.arquivo) elArquivo.value = cfg.arquivo;
         if (cfg.token) elToken.value = cfg.token;
         return Boolean(cfg.repo && cfg.arquivo && cfg.token);
-      } catch {
+      } catch (e) {
         return false;
       }
     }
 
     function base64ParaUtf8(b64) {
       const limpo = b64.replace(/\s/g, "");
-      const binario = atob(limpo);
-      const bytes = Uint8Array.from(binario, (ch) => ch.codePointAt(0));
-      return new TextDecoder("utf-8").decode(bytes);
-    }
-
-    function utf8ParaBase64(texto) {
-      const bytes = new TextEncoder().encode(texto);
-      let binario = "";
-      for (const byte of bytes) {
-        binario += String.fromCodePoint(byte);
-      }
-      return btoa(binario);
-    }
-
-    function unixParaInputLocal(segundos) {
-      if (!segundos || segundos <= 0) return "";
-      const d = new Date(segundos * 1000);
-      if (Number.isNaN(d.getTime())) return "";
-      const pad = (n) => String(n).padStart(2, "0");
-      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    }
-
-    function inputLocalParaUnix(valor) {
-      if (!valor) return 0;
-      const ms = new Date(valor).getTime();
-      return Number.isNaN(ms) ? 0 : Math.floor(ms / 1000);
-    }
-
-    function criarBadgeExpiracao(expira) {
-      const span = document.createElement("span");
-      const agora = Math.floor(Date.now() / 1000);
-
-      if (!expira || expira <= 0) {
-        span.className = "badge ilimitado";
-        span.textContent = "Ilimitado";
-      } else if (expira < agora) {
-        span.className = "badge expirado";
-        span.textContent = "Expirado";
-      } else {
-        span.className = "badge ativo";
-        span.textContent = `Ativo até ${new Date(expira * 1000).toLocaleString("pt-BR")}`;
-      }
-      return span;
-    }
-
-    function traduzirErroApi(status, detalhe, cfg) {
-      if (status === 401) {
-        return "Token inválido, expirado ou revogado (HTTP 401). Gere um novo token no GitHub.";
-      }
-      if (status === 403) {
-        return `Token sem permissão de acesso ao repositório "${cfg.repo}" (HTTP 403). Verifique se liberou Contents (Read and write).`;
-      }
-      if (status === 404) {
-        return `Não encontrado (HTTP 404): verifique se "${cfg.repo}" (branch "${cfg.branch}") existe, se o arquivo "${cfg.arquivo}" existe e se o token tem permissão para esse repositório.`;
-      }
-      return `${detalhe || "Erro na API do GitHub"} (HTTP ${status})`;
-    }
-
-    async function carregarUsuarios() {
-      const cfg = obterConfig();
-      if (!cfg.repo || !cfg.arquivo || !cfg.token) {
-        mostrarStatus("Preencha repositório, arquivo e token para conectar.", "error");
-        return;
-      }
-
-      definirBloqueio(true, "Conectando...");
-      mostrarStatus(`Conectando em ${cfg.repo} (${cfg.branch})...`, "info");
-
-      try {
-        const url = `https://api.github.com/repos/${cfg.repo}/contents/${cfg.arquivo}?ref=${encodeURIComponent(cfg.branch)}&t=${Date.now()}`;
-        const res = await fetch(url, {
-          headers: {
-            Authorization: `Bearer ${cfg.token}`,
-            Accept: "application/vnd.github+json"
-          }
-        });
-
-        if (res.status === 404) {
-          usuarios = {};
-          ultimoSha = null;
-          renderizarTabela();
-          mostrarStatus(traduzirErroApi(404, "", cfg), "error");
-          return;
-        }
-
-        if (!res.ok) {
-          const erro = await res.json().catch(() => ({}));
-          throw new Error(traduzirErroApi(res.status, erro.message, cfg));
-        }
-
-        const json = await res.json();
-        const texto = base64ParaUtf8(json.content || "");
-        const dados = texto.trim() ? JSON.parse(texto) : {};
-
-        if (!dados || typeof dados !== "object" || Array.isArray(dados)) {
-          throw new Error(`O arquivo "${cfg.arquivo}" não contém um objeto JSON válido.`);
-        }
-
-        usuarios = dados;
-        ultimoSha = json.sha;
-        salvarConfigSessao();
-        renderizarTabela();
-        mostrarStatus(`Conectado a ${cfg.repo}: ${Object.keys(usuarios).length} usuário(s) carregado(s).`, "success");
-      } catch (err) {
-        mostrarStatus(`Falha ao carregar: ${err.message}`, "error");
-      } finally {
-        definirBloqueio(false);
-      }
-    }
-
-    async function persistirUsuarios(novoEstado, mensagemCommit) {
-      const cfg = obterConfig();
-      if (!cfg.repo || !cfg.arquivo || !cfg.token) {
-        mostrarStatus("Configure o repositório e o token antes de salvar.", "error");
-        return false;
-      }
-
-      definirBloqueio(true, "Salvando...");
-      mostrarStatus("Salvando alterações no GitHub...", "info");
-
-      try {
-        const conteudo = JSON.stringify(novoEstado, null, 2) + "\n";
-        const payload = {
-          message: mensagemCommit,
-          content: utf8ParaBase64(conteudo),
-          branch: cfg.branch
-        };
-        if (ultimoSha) {
-          payload.sha = ultimoSha;
-        }
-
-        const res = await fetch(`https://api.github.com/repos/${cfg.repo}/contents/${cfg.arquivo}`, {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${cfg.token}`,
-            Accept: "application/vnd.github+json",
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(payload)
-        });
-
-        if (res.status === 409) {
-          mostrarStatus("Conflito de versão: o arquivo foi alterado fora desta aba. Recarregando...", "error");
-          definirBloqueio(false);
-          await carregarUsuarios();
-          return false;
-        }
-
-        if (!res.ok) {
-          const erro = await res.json().catch(() => ({}));
-          throw new Error(traduzirErroApi(res.status, erro.message, cfg));
-        }
-
-        const json = await res.json();
-        ultimoSha = json.content?.sha || ultimoSha;
-        usuarios = novoEstado;
-        renderizarTabela();
-        mostrarStatus("Alterações salvas com sucesso no GitHub.", "success");
-        return true;
-      } catch (err) {
-        mostrarStatus(`Erro ao salvar: ${err.message}`, "error");
-        renderizarTabela();
-        return false;
-      } finally {
-        definirBloqueio(false);
-      }
-    }
-
-    function clonarUsuarios() {
-      return JSON.parse(JSON.stringify(usuarios));
-    }
-
-    function renderizarTabela() {
-      elBody.replaceChildren();
-      const entradas = Object.entries(usuarios);
-
-      if (entradas.length === 0) {
-        const tr = document.createElement("tr");
-        tr.className = "empty-row";
-        const td = document.createElement("td");
-        td.colSpan = 4;
-        td.textContent = "Nenhum usuário cadastrado.";
-        tr.appendChild(td);
-        elBody.appendChild(tr);
-        return;
-      }
-
-      entradas.forEach(([userOriginal, dados]) => {
-        const tr = document.createElement("tr");
-        const expiraInicial = Number.isFinite(Number(dados?.expira)) ? Number(dados.expira) : 0;
-
-        const tdUser = document.createElement("td");
-        const inputUser = document.createElement("input");
-        inputUser.type = "text";
-        inputUser.value = userOriginal;
-        tdUser.appendChild(inputUser);
-
-        const tdSenha = document.createElement("td");
-        const inputSenha = document.createElement("input");
-        inputSenha.type = "text";
-        inputSenha.value = dados?.senha ?? "";
-        tdSenha.appendChild(inputSenha);
-
-        const tdExpira = document.createElement("td");
-        const expiraWrap = document.createElement("div");
-        expiraWrap.className = "expira-cell";
-
-        const inputData = document.createElement("input");
-        inputData.type = "datetime-local";
-        inputData.value = unixParaInputLocal(expiraInicial);
-
-        const atalhos = document.createElement("div");
-        atalhos.className = "expira-atalhos";
-
-        let badge = criarBadgeExpiracao(expiraInicial);
-
-        const btnMais30 = document.createElement("button");
-        btnMais30.type = "button";
-        btnMais30.className = "btn-small";
-        btnMais30.textContent = "+30d";
-
-        const btnIlimitado = document.createElement("button");
-        btnIlimitado.type = "button";
-        btnIlimitado.className = "btn-small";
-        btnIlimitado.textContent = "Ilimitado";
-
-        atalhos.append(btnMais30, btnIlimitado, badge);
-        expiraWrap.append(inputData, atalhos);
-        tdExpira.appendChild(expiraWrap);
-
-        const tdAcoes = document.createElement("td");
-        const acoesWrap = document.createElement("div");
-        acoesWrap.className = "actions";
-
-        const btnSalvar = document.createElement("button");
-        btnSalvar.type = "button";
-        btnSalvar.className = "btn-primary btn-small";
-        btnSalvar.textContent = "Salvar";
-
-        const btnRemover = document.createElement("button");
-        btnRemover.type = "button";
-        btnRemover.className = "btn-danger btn-small";
-        btnRemover.textContent = "Remover";
-
-        acoesWrap.append(btnSalvar, btnRemover);
-        tdAcoes.appendChild(acoesWrap);
-
-        const marcarAlterado = () => {
-          tr.classList.add("alterado");
-          const novoExpira = inputLocalParaUnix(inputData.value);
-          const novoBadge = criarBadgeExpiracao(novoExpira);
-          badge.replaceWith(novoBadge);
-          badge = novoBadge;
-        };
-
-        inputUser.addEventListener("input", marcarAlterado);
-        inputSenha.addEventListener("input", marcarAlterado);
-        inputData.addEventListener("change", marcarAlterado);
-
-        btnMais30.addEventListener("click", () => {
-          const agora = Math.floor(Date.now() / 1000);
-          const atual = inputLocalParaUnix(inputData.value);
-          const base = atual > agora ? atual : agora;
-          inputData.value = unixParaInputLocal(base + 30 * 24 * 3600);
-          marcarAlterado();
-        });
-
-        btnIlimitado.addEventListener("click", () => {
-          inputData.value = "";
-          marcarAlterado();
-        });
-
-        btnSalvar.addEventListener("click", async () => {
-          if (emOperacao) return;
-
-          const novoUser = inputUser.value.trim();
-          const novaSenha = inputSenha.value.trim();
-          const novoExpira = inputLocalParaUnix(inputData.value);
-
-          if (!novoUser || !novaSenha) {
-            mostrarStatus("Usuário e senha não podem ficar vazios.", "error");
-            return;
-          }
-
-          if (novoUser !== userOriginal && Object.prototype.hasOwnProperty.call(usuarios, novoUser)) {
-            mostrarStatus(`O usuário "${novoUser}" já existe.`, "error");
-            return;
-          }
-
-          const novoEstado = clonarUsuarios();
-          if (novoUser !== userOriginal) {
-            delete novoEstado[userOriginal];
-          }
-          novoEstado[novoUser] = { senha: novaSenha, expira: novoExpira };
-
-          await persistirUsuarios(novoEstado, `Atualizar usuário ${novoUser}`);
-        });
-
-        btnRemover.addEventListener("click", async () => {
-          if (emOperacao) return;
-          if (!confirm(`Remover o usuário "${userOriginal}"?`)) return;
-
-          const novoEstado = clonarUsuarios();
-          delete novoEstado[userOriginal];
-          await persistirUsuarios(novoEstado, `Remover usuário ${userOriginal}`);
-        });
-
-        tr.append(tdUser, tdSenha, tdExpira, tdAcoes);
-        elBody.appendChild(tr);
-      });
-    }
-
-    elFormConfig.addEventListener("submit", (e) => {
-      e.preventDefault();
-      if (!emOperacao) carregarUsuarios();
-    });
-
-    // Conecta automaticamente ao colar um token válido
-    elToken.addEventListener("paste", () => {
-      setTimeout(() => {
-        if (!emOperacao && elToken.value.trim().length >= 20) {
-          carregarUsuarios();
-        }
-      }, 100);
-    });
-
-    elBtnSair.addEventListener("click", () => {
-      try { sessionStorage.removeItem(STORAGE_KEY); } catch {}
-      elToken.value = "";
-      usuarios = {};
-      ultimoSha = null;
-      renderizarTabela();
-      mostrarStatus("Token removido da sessão.", "info");
-    });
-
-    elFormNovo.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      if (emOperacao) return;
-
-      const user = document.getElementById("novoUser").value.trim();
-      const senha = document.getElementById("novaSenha").value.trim();
-      const horas = Number.parseInt(document.getElementById("novaValidade").value, 10);
-
-      if (!user || !senha) {
-        mostrarStatus("Usuário e senha são obrigatórios.", "error");
-        return;
-      }
-
-      if (Number.isNaN(horas) || horas < 0) {
-        mostrarStatus("Informe uma validade em horas igual ou maior que 0.", "error");
-        return;
-      }
-
-      if (Object.prototype.hasOwnProperty.call(usuarios, user)) {
-        mostrarStatus(`O usuário "${user}" já está cadastrado. Edite-o diretamente na tabela.`, "error");
-        return;
-      }
-
-      const agora = Math.floor(Date.now() / 1000);
-      const expira = horas > 0 ? agora + horas * 3600 : 0;
-
-      const novoEstado = clonarUsuarios();
-      novoEstado[user] = { senha, expira };
-
-      const salvou = await persistirUsuarios(novoEstado, `Adicionar usuário ${user}`);
-      if (salvou) {
-        elFormNovo.reset();
-        document.getElementById("novaValidade").value = "0";
-      }
-    });
-
-    if (restaurarConfigSessao()) {
-      carregarUsuarios();
-    } else {
-      mostrarStatus("Pronto: confira o repositório (usuario/repo), cole o token e aguarde ou clique em Conectar.", "info");
-    }
-  </script>
-</body>
-</html>
