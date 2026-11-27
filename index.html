@@ -1,4 +1,3 @@
-HTML
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -17,7 +16,6 @@ HTML
       --danger: #cf222e;
       --danger-hover: #a40e26;
       --success: #1a7f37;
-      --warn: #9a6700;
     }
 
     * { box-sizing: border-box; }
@@ -27,7 +25,7 @@ HTML
       background: var(--bg);
       color: var(--text);
       margin: 0;
-      padding: 20px;
+      padding: 16px;
       line-height: 1.4;
     }
 
@@ -37,9 +35,26 @@ HTML
     }
 
     h1 {
-      margin-top: 0;
-      font-size: 1.5rem;
+      margin: 0 0 12px;
+      font-size: 1.45rem;
     }
+
+    .status {
+      position: sticky;
+      top: 8px;
+      z-index: 100;
+      padding: 12px 14px;
+      border-radius: 8px;
+      margin-bottom: 14px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      display: none;
+    }
+    .status.show { display: block; }
+    .status.info { background: #ddf4ff; border: 1px solid #54aeff; color: #0550ae; }
+    .status.success { background: #dafbe1; border: 1px solid #4ac26b; color: #116329; }
+    .status.error { background: #ffebe9; border: 1px solid #ff8182; color: #a40e26; }
 
     .card {
       background: var(--card);
@@ -56,7 +71,7 @@ HTML
 
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
       gap: 12px;
       align-items: end;
     }
@@ -116,18 +131,6 @@ HTML
       font-size: 0.8rem;
     }
 
-    .status {
-      padding: 10px 14px;
-      border-radius: 6px;
-      margin-bottom: 16px;
-      font-size: 0.9rem;
-      display: none;
-    }
-    .status.show { display: block; }
-    .status.info { background: #ddf4ff; border: 1px solid #54aeff; color: #0550ae; }
-    .status.success { background: #dafbe1; border: 1px solid #4ac26b; color: #116329; }
-    .status.error { background: #ffebe9; border: 1px solid #ff8182; color: #a40e26; }
-
     .table-wrapper {
       overflow-x: auto;
       background: var(--card);
@@ -154,9 +157,7 @@ HTML
       color: var(--muted);
     }
 
-    tr.alterado {
-      background: #fff8c5;
-    }
+    tr.alterado { background: #fff8c5; }
 
     .expira-cell {
       display: flex;
@@ -209,15 +210,19 @@ HTML
           <input type="text" id="cfgRepo" value="bydylo/painel" required />
         </label>
         <label>
+          Branch
+          <input type="text" id="cfgBranch" value="main" required />
+        </label>
+        <label>
           Arquivo JSON
           <input type="text" id="cfgArquivo" value="usuarios.json" required />
         </label>
         <label>
           Token (PAT com permissão Contents)
-          <input type="password" id="cfgToken" placeholder="github_pat_..." required />
+          <input type="password" id="cfgToken" placeholder="Cole seu github_pat_ ou ghp_..." required />
         </label>
         <div class="actions">
-          <button type="submit" class="btn-primary">Conectar / Recarregar</button>
+          <button type="submit" id="btnConectar" class="btn-primary">Conectar / Recarregar</button>
           <button type="button" id="btnSair">Limpar Token</button>
         </div>
       </div>
@@ -256,7 +261,7 @@ HTML
         </thead>
         <tbody id="usuariosBody">
           <tr class="empty-row">
-            <td colspan="4">Informe o repositório e o token acima para carregar os usuários.</td>
+            <td colspan="4">Cole o token acima ou clique em "Conectar / Recarregar".</td>
           </tr>
         </tbody>
       </table>
@@ -274,9 +279,11 @@ HTML
     const elBody = document.getElementById("usuariosBody");
     const elFormConfig = document.getElementById("formConfig");
     const elFormNovo = document.getElementById("formNovo");
+    const elBtnConectar = document.getElementById("btnConectar");
     const elBtnSair = document.getElementById("btnSair");
 
     const elRepo = document.getElementById("cfgRepo");
+    const elBranch = document.getElementById("cfgBranch");
     const elArquivo = document.getElementById("cfgArquivo");
     const elToken = document.getElementById("cfgToken");
 
@@ -285,31 +292,46 @@ HTML
       elStatus.className = `status show ${tipo}`;
     }
 
-    function definirBloqueio(bloqueado) {
+    // Exibe qualquer erro inesperado na tela (útil no celular)
+    window.addEventListener("error", (ev) => {
+      mostrarStatus(`Erro no navegador: ${ev.message}`, "error");
+    });
+    window.addEventListener("unhandledrejection", (ev) => {
+      mostrarStatus(`Erro inesperado: ${ev.reason?.message || ev.reason}`, "error");
+    });
+
+    function definirBloqueio(bloqueado, textoBotao = "Conectar / Recarregar") {
       emOperacao = bloqueado;
       document.querySelectorAll("button").forEach((btn) => {
         btn.disabled = bloqueado;
       });
+      elBtnConectar.textContent = bloqueado ? textoBotao : "Conectar / Recarregar";
     }
 
     function obterConfig() {
       return {
-        repo: elRepo.value.trim(),
+        repo: elRepo.value.trim().replace(/^https?:\/\/github\.com\//i, "").replace(/\/+$/, ""),
+        branch: elBranch.value.trim() || "main",
         arquivo: elArquivo.value.trim().replace(/^\/+/, ""),
         token: elToken.value.trim()
       };
     }
 
     function salvarConfigSessao() {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(obterConfig()));
+      try {
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(obterConfig()));
+      } catch {
+        // Ignora se o navegador bloquear sessionStorage (ex: modo restrito ou file://)
+      }
     }
 
     function restaurarConfigSessao() {
-      const salvo = sessionStorage.getItem(STORAGE_KEY);
-      if (!salvo) return false;
       try {
+        const salvo = sessionStorage.getItem(STORAGE_KEY);
+        if (!salvo) return false;
         const cfg = JSON.parse(salvo);
         if (cfg.repo) elRepo.value = cfg.repo;
+        if (cfg.branch) elBranch.value = cfg.branch;
         if (cfg.arquivo) elArquivo.value = cfg.arquivo;
         if (cfg.token) elToken.value = cfg.token;
         return Boolean(cfg.repo && cfg.arquivo && cfg.token);
@@ -365,21 +387,34 @@ HTML
       return span;
     }
 
+    function traduzirErroApi(status, detalhe, cfg) {
+      if (status === 401) {
+        return "Token inválido, expirado ou revogado (HTTP 401). Gere um novo token no GitHub.";
+      }
+      if (status === 403) {
+        return `Token sem permissão de acesso ao repositório "${cfg.repo}" (HTTP 403). Verifique se liberou Contents (Read and write).`;
+      }
+      if (status === 404) {
+        return `Não encontrado (HTTP 404): verifique se "${cfg.repo}" (branch "${cfg.branch}") existe, se o arquivo "${cfg.arquivo}" existe e se o token tem permissão para esse repositório.`;
+      }
+      return `${detalhe || "Erro na API do GitHub"} (HTTP ${status})`;
+    }
+
     async function carregarUsuarios() {
-      const { repo, arquivo, token } = obterConfig();
-      if (!repo || !arquivo || !token) {
-        mostrarStatus("Preencha repositório, arquivo e token para continuar.", "error");
+      const cfg = obterConfig();
+      if (!cfg.repo || !cfg.arquivo || !cfg.token) {
+        mostrarStatus("Preencha repositório, arquivo e token para conectar.", "error");
         return;
       }
 
-      definirBloqueio(true);
-      mostrarStatus("Carregando usuários via GitHub API...", "info");
+      definirBloqueio(true, "Conectando...");
+      mostrarStatus(`Conectando em ${cfg.repo} (${cfg.branch})...`, "info");
 
       try {
-        const res = await fetch(`https://api.github.com/repos/${repo}/contents/${arquivo}`, {
-          cache: "no-store",
+        const url = `https://api.github.com/repos/${cfg.repo}/contents/${cfg.arquivo}?ref=${encodeURIComponent(cfg.branch)}&t=${Date.now()}`;
+        const res = await fetch(url, {
           headers: {
-            Authorization: `Bearer ${token}`,
+            Authorization: `Bearer ${cfg.token}`,
             Accept: "application/vnd.github+json"
           }
         });
@@ -388,13 +423,13 @@ HTML
           usuarios = {};
           ultimoSha = null;
           renderizarTabela();
-          mostrarStatus(`Arquivo "${arquivo}" não encontrado. Ele será criado no primeiro cadastro.`, "info");
+          mostrarStatus(traduzirErroApi(404, "", cfg), "error");
           return;
         }
 
         if (!res.ok) {
           const erro = await res.json().catch(() => ({}));
-          throw new Error(erro.message || `Erro HTTP ${res.status}`);
+          throw new Error(traduzirErroApi(res.status, erro.message, cfg));
         }
 
         const json = await res.json();
@@ -402,14 +437,14 @@ HTML
         const dados = texto.trim() ? JSON.parse(texto) : {};
 
         if (!dados || typeof dados !== "object" || Array.isArray(dados)) {
-          throw new Error("O arquivo usuarios.json não contém um objeto JSON válido.");
+          throw new Error(`O arquivo "${cfg.arquivo}" não contém um objeto JSON válido.`);
         }
 
         usuarios = dados;
         ultimoSha = json.sha;
         salvarConfigSessao();
         renderizarTabela();
-        mostrarStatus(`Carregado com sucesso (${Object.keys(usuarios).length} usuário(s)).`, "success");
+        mostrarStatus(`Conectado a ${cfg.repo}: ${Object.keys(usuarios).length} usuário(s) carregado(s).`, "success");
       } catch (err) {
         mostrarStatus(`Falha ao carregar: ${err.message}`, "error");
       } finally {
@@ -418,30 +453,30 @@ HTML
     }
 
     async function persistirUsuarios(novoEstado, mensagemCommit) {
-      const { repo, arquivo, token } = obterConfig();
-      if (!repo || !arquivo || !token) {
+      const cfg = obterConfig();
+      if (!cfg.repo || !cfg.arquivo || !cfg.token) {
         mostrarStatus("Configure o repositório e o token antes de salvar.", "error");
         return false;
       }
 
-      definirBloqueio(true);
+      definirBloqueio(true, "Salvando...");
       mostrarStatus("Salvando alterações no GitHub...", "info");
 
       try {
         const conteudo = JSON.stringify(novoEstado, null, 2) + "\n";
         const payload = {
           message: mensagemCommit,
-          content: utf8ParaBase64(conteudo)
+          content: utf8ParaBase64(conteudo),
+          branch: cfg.branch
         };
         if (ultimoSha) {
           payload.sha = ultimoSha;
         }
 
-        const res = await fetch(`https://api.github.com/repos/${repo}/contents/${arquivo}`, {
+        const res = await fetch(`https://api.github.com/repos/${cfg.repo}/contents/${cfg.arquivo}`, {
           method: "PUT",
-          cache: "no-store",
           headers: {
-            Authorization: `Bearer ${token}`,
+            Authorization: `Bearer ${cfg.token}`,
             Accept: "application/vnd.github+json",
             "Content-Type": "application/json"
           },
@@ -450,13 +485,14 @@ HTML
 
         if (res.status === 409) {
           mostrarStatus("Conflito de versão: o arquivo foi alterado fora desta aba. Recarregando...", "error");
+          definirBloqueio(false);
           await carregarUsuarios();
           return false;
         }
 
         if (!res.ok) {
           const erro = await res.json().catch(() => ({}));
-          throw new Error(erro.message || `Erro HTTP ${res.status}`);
+          throw new Error(traduzirErroApi(res.status, erro.message, cfg));
         }
 
         const json = await res.json();
@@ -497,21 +533,18 @@ HTML
         const tr = document.createElement("tr");
         const expiraInicial = Number.isFinite(Number(dados?.expira)) ? Number(dados.expira) : 0;
 
-        // Coluna Usuário
         const tdUser = document.createElement("td");
         const inputUser = document.createElement("input");
         inputUser.type = "text";
         inputUser.value = userOriginal;
         tdUser.appendChild(inputUser);
 
-        // Coluna Senha
         const tdSenha = document.createElement("td");
         const inputSenha = document.createElement("input");
         inputSenha.type = "text";
         inputSenha.value = dados?.senha ?? "";
         tdSenha.appendChild(inputSenha);
 
-        // Coluna Expiração
         const tdExpira = document.createElement("td");
         const expiraWrap = document.createElement("div");
         expiraWrap.className = "expira-cell";
@@ -539,7 +572,6 @@ HTML
         expiraWrap.append(inputData, atalhos);
         tdExpira.appendChild(expiraWrap);
 
-        // Coluna Ações
         const tdAcoes = document.createElement("td");
         const acoesWrap = document.createElement("div");
         acoesWrap.className = "actions";
@@ -627,8 +659,17 @@ HTML
       if (!emOperacao) carregarUsuarios();
     });
 
+    // Conecta automaticamente ao colar um token válido
+    elToken.addEventListener("paste", () => {
+      setTimeout(() => {
+        if (!emOperacao && elToken.value.trim().length >= 20) {
+          carregarUsuarios();
+        }
+      }, 100);
+    });
+
     elBtnSair.addEventListener("click", () => {
-      sessionStorage.removeItem(STORAGE_KEY);
+      try { sessionStorage.removeItem(STORAGE_KEY); } catch {}
       elToken.value = "";
       usuarios = {};
       ultimoSha = null;
@@ -674,6 +715,8 @@ HTML
 
     if (restaurarConfigSessao()) {
       carregarUsuarios();
+    } else {
+      mostrarStatus("Pronto: confira o repositório (usuario/repo), cole o token e aguarde ou clique em Conectar.", "info");
     }
   </script>
 </body>
