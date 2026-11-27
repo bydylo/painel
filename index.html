@@ -2,186 +2,283 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Painel IPTV</title>
   <style>
+    :root {
+      --bg: #f0f2f5;
+      --card: #ffffff;
+      --border: #d8dee4;
+      --text: #1f2328;
+      --muted: #59636e;
+      --primary: #0969da;
+      --primary-hover: #0550ae;
+      --danger: #cf222e;
+      --danger-hover: #a40e26;
+      --success: #1a7f37;
+      --warn: #9a6700;
+    }
+
+    * { box-sizing: border-box; }
+
     body {
-      font-family: sans-serif;
-      background: #f0f2f5;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
       margin: 0;
       padding: 20px;
+      line-height: 1.4;
     }
-    h1 { color: #333; }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 1.5rem;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 1.05rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      align-items: end;
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    input[type="text"],
+    input[type="password"],
+    input[type="number"],
+    input[type="datetime-local"] {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.9rem;
+      color: var(--text);
+      background: #fff;
+    }
+
+    button {
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #f6f8fa;
+      color: var(--text);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    button:hover:not(:disabled) { background: #eaeef2; }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .btn-primary {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+
+    .btn-danger {
+      background: var(--danger);
+      border-color: var(--danger);
+      color: #fff;
+    }
+    .btn-danger:hover:not(:disabled) { background: var(--danger-hover); }
+
+    .btn-small {
+      padding: 5px 8px;
+      font-size: 0.8rem;
+    }
+
+    .status {
+      padding: 10px 14px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      font-size: 0.9rem;
+      display: none;
+    }
+    .status.show { display: block; }
+    .status.info { background: #ddf4ff; border: 1px solid #54aeff; color: #0550ae; }
+    .status.success { background: #dafbe1; border: 1px solid #4ac26b; color: #116329; }
+    .status.error { background: #ffebe9; border: 1px solid #ff8182; color: #a40e26; }
+
+    .table-wrapper {
+      overflow-x: auto;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
-      background: white;
-      margin-bottom: 20px;
+      min-width: 760px;
     }
+
     th, td {
-      padding: 8px;
-      border: 1px solid #ddd;
+      padding: 10px;
+      border-bottom: 1px solid var(--border);
       text-align: left;
+      vertical-align: middle;
     }
-    input[type="text"], input[type="number"] {
-      padding: 5px;
-      width: 100%;
-      box-sizing: border-box;
+
+    th {
+      background: #f6f8fa;
+      font-size: 0.85rem;
+      color: var(--muted);
     }
-    button {
-      padding: 6px 10px;
-      margin: 2px;
-      cursor: pointer;
+
+    tr.alterado {
+      background: #fff8c5;
     }
+
+    .expira-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .expira-atalhos {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+    .badge.ativo { background: #dafbe1; color: var(--success); }
+    .badge.expirado { background: #ffebe9; color: var(--danger); }
+    .badge.ilimitado { background: #ddf4ff; color: var(--primary); }
+
     .actions {
       display: flex;
-      gap: 5px;
+      gap: 6px;
+      flex-wrap: wrap;
     }
-    #formNovo {
-      background: #fff;
-      padding: 10px;
-      border: 1px solid #ccc;
-      margin-bottom: 20px;
+
+    .empty-row td {
+      text-align: center;
+      color: var(--muted);
+      padding: 24px;
     }
-    label { font-weight: bold; display: block; margin-top: 10px; }
   </style>
 </head>
 <body>
-  <h1>Painel de Usuários IPTV</h1>
+  <div class="container">
+    <h1>Painel de Usuários IPTV</h1>
 
-  <div id="formNovo">
-    <h3>Adicionar Novo Usuário</h3>
-    <label>Usuário: <input type="text" id="novoUser" /></label>
-    <label>Senha: <input type="text" id="novaSenha" /></label>
-    <label>Validade (em horas, 0 = ilimitado): <input type="number" id="novaValidade" value="0" /></label>
-    <button onclick="adicionarUsuario()">Adicionar</button>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+
+    <form id="formConfig" class="card">
+      <h2>Conexão com o GitHub</h2>
+      <div class="grid">
+        <label>
+          Repositório (usuario/repo)
+          <input type="text" id="cfgRepo" value="bydylo/painel" required />
+        </label>
+        <label>
+          Arquivo JSON
+          <input type="text" id="cfgArquivo" value="usuarios.json" required />
+        </label>
+        <label>
+          Token (PAT com permissão Contents)
+          <input type="password" id="cfgToken" placeholder="github_pat_..." required />
+        </label>
+        <div class="actions">
+          <button type="submit" class="btn-primary">Conectar / Recarregar</button>
+          <button type="button" id="btnSair">Limpar Token</button>
+        </div>
+      </div>
+    </form>
+
+    <form id="formNovo" class="card">
+      <h2>Adicionar Novo Usuário</h2>
+      <div class="grid">
+        <label>
+          Usuário
+          <input type="text" id="novoUser" required autocomplete="off" />
+        </label>
+        <label>
+          Senha
+          <input type="text" id="novaSenha" required autocomplete="off" />
+        </label>
+        <label>
+          Validade (em horas, 0 = ilimitado)
+          <input type="number" id="novaValidade" value="0" min="0" step="1" required />
+        </label>
+        <div>
+          <button type="submit" class="btn-primary">Adicionar Usuário</button>
+        </div>
+      </div>
+    </form>
+
+    <div class="table-wrapper">
+      <table id="tabela">
+        <thead>
+          <tr>
+            <th>Usuário</th>
+            <th>Senha</th>
+            <th>Expiração</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody id="usuariosBody">
+          <tr class="empty-row">
+            <td colspan="4">Informe o repositório e o token acima para carregar os usuários.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 
-  <table id="tabela">
-    <thead>
-      <tr>
-        <th>Usuário</th>
-        <th>Senha</th>
-        <th>Expira</th>
-        <th>Ações</th>
-      </tr>
-    </thead>
-    <tbody id="usuariosBody">
-      <tr><td colspan="4">Carregando...</td></tr>
-    </tbody>
-  </table>
-
   <script>
-    const repo = "silverfb13/painel";
-    const arquivo = "usuarios.json";
-    const token = "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";
+    const STORAGE_KEY = "painel_iptv_cfg";
 
     let usuarios = {};
+    let ultimoSha = null;
+    let emOperacao = false;
 
-    async function carregarUsuarios() {
-      const res = await fetch(`https://raw.githubusercontent.com/${repo}/main/${arquivo}?t=${Date.now()}`);
-      usuarios = await res.json();
-      atualizarTabela();
-    }
+    const elStatus = document.getElementById("status");
+    const elBody = document.getElementById("usuariosBody");
+    const elFormConfig = document.getElementById("formConfig");
+    const elFormNovo = document.getElementById("formNovo");
+    const elBtnSair = document.getElementById("btnSair");
 
-    function atualizarTabela() {
-      const tbody = document.getElementById("usuariosBody");
-      tbody.innerHTML = "";
+    const elRepo = document.getElementById("cfgRepo");
+    const elArquivo = document.getElementById("cfgArquivo");
+    const elToken = document.getElementById("cfgToken");
 
-      const agora = Math.floor(Date.now() / 1000);
-
-      Object.entries(usuarios).forEach(([user, dados]) => {
-        const tr = document.createElement("tr");
-
-        const tdUser = document.createElement("td");
-        tdUser.innerHTML = `<input value="${user}" onchange="editarCampo('${user}', this.value, 'user')" />`;
-
-        const tdSenha = document.createElement("td");
-        tdSenha.innerHTML = `<input value="${dados.senha}" onchange="editarCampo('${user}', this.value, 'senha')" />`;
-
-        const expira = dados.expira || 0;
-        const expiraText = expira === 0 ? "Ilimitado" :
-          (expira < agora ? "Expirado" :
-          new Date(expira * 1000).toLocaleString("pt-BR"));
-
-        const tdExpira = document.createElement("td");
-        tdExpira.innerHTML = `
-          <input type="number" value="${expira}" onchange="editarCampo('${user}', this.value, 'expira')" />
-          <br><small>${expiraText}</small>
-        `;
-
-        const tdAcoes = document.createElement("td");
-        tdAcoes.classList.add("actions");
-        tdAcoes.innerHTML = `
-          <button onclick="removerUsuario('${user}')">Remover</button>
-        `;
-
-        tr.append(tdUser, tdSenha, tdExpira, tdAcoes);
-        tbody.appendChild(tr);
-      });
-    }
-
-    function editarCampo(user, valor, campo) {
-      if (campo === "user") {
-        usuarios[valor] = { ...usuarios[user] };
-        delete usuarios[user];
-      } else {
-        usuarios[user][campo] = campo === "expira" ? parseInt(valor) : valor;
-      }
-      salvarUsuarios();
-    }
-
-    function adicionarUsuario() {
-      const user = document.getElementById("novoUser").value.trim();
-      const senha = document.getElementById("novaSenha").value.trim();
-      const horas = parseInt(document.getElementById("novaValidade").value);
-
-      if (!user || !senha) return alert("Usuário e senha obrigatórios");
-
-      const agora = Math.floor(Date.now() / 1000);
-      const expira = horas > 0 ? agora + horas * 3600 : 0;
-
-      usuarios[user] = { senha, expira };
-      salvarUsuarios();
-
-      document.getElementById("novoUser").value = "";
-      document.getElementById("novaSenha").value = "";
-      document.getElementById("novaValidade").value = "0";
-    }
-
-    function removerUsuario(user) {
-      if (confirm(`Remover usuário ${user}?`)) {
-        delete usuarios[user];
-        salvarUsuarios();
-      }
-    }
-
-    async function salvarUsuarios() {
-      const content = JSON.stringify(usuarios, null, 2);
-      const blob = btoa(unescape(encodeURIComponent(content)));
-
-      const resGet = await fetch(`https://api.github.com/repos/${repo}/contents/${arquivo}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const json = await resGet.json();
-
-      await fetch(`https://api.github.com/repos/${repo}/contents/${arquivo}`, {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          message: "Atualizar usuarios.json",
-          content: blob,
-          sha: json.sha
-        })
-      });
-
-      carregarUsuarios();
-    }
-
-    carregarUsuarios();
-  </script>
-</body>
-</html>
+    function mostrarStatus(mensagem, tipo = "info") {
+      elStatus.textContent = mensagem;
+      elStatus.className
