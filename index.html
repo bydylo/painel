@@ -1,32 +1,87 @@
- <script>
-    const repo = "bydylo/painel";
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Painel IPTV</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f0f2f5;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 { color: #333; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      margin-bottom: 20px;
+    }
+    th, td {
+      padding: 8px;
+      border: 1px solid #ddd;
+      text-align: left;
+    }
+    input[type="text"], input[type="number"] {
+      padding: 5px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    button {
+      padding: 6px 10px;
+      margin: 2px;
+      cursor: pointer;
+    }
+    .actions {
+      display: flex;
+      gap: 5px;
+    }
+    #formNovo {
+      background: #fff;
+      padding: 10px;
+      border: 1px solid #ccc;
+      margin-bottom: 20px;
+    }
+    label { font-weight: bold; display: block; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Painel de Usuários IPTV</h1>
+
+  <div id="formNovo">
+    <h3>Adicionar Novo Usuário</h3>
+    <label>Usuário: <input type="text" id="novoUser" /></label>
+    <label>Senha: <input type="text" id="novaSenha" /></label>
+    <label>Validade (em horas, 0 = ilimitado): <input type="number" id="novaValidade" value="0" /></label>
+    <button onclick="adicionarUsuario()">Adicionar</button>
+  </div>
+
+  <table id="tabela">
+    <thead>
+      <tr>
+        <th>Usuário</th>
+        <th>Senha</th>
+        <th>Expira</th>
+        <th>Ações</th>
+      </tr>
+    </thead>
+    <tbody id="usuariosBody">
+      <tr><td colspan="4">Carregando...</td></tr>
+    </tbody>
+  </table>
+
+  <script>
+    const repo = "silverfb13/painel";
     const arquivo = "usuarios.json";
-    const token = "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";
+    const token = "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";
 
     let usuarios = {};
 
     async function carregarUsuarios() {
-      try {
-        const res = await fetch(`https://github.com{repo}/contents/${arquivo}?t=${Date.now()}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/vnd.github.v3+json"
-          }
-        });
-
-        if (!res.ok) {
-          const erro = await res.json();
-          throw new Error(`Erro ao carregar (${res.status}): ${erro.message}`);
-        }
-
-        const json = await res.json();
-        const conteudoDecodificado = decodeURIComponent(escape(atob(json.content.replace(/\n/g, ""))));
-        usuarios = JSON.parse(conteudoDecodificado);
-        atualizarTabela();
-      } catch (e) {
-        alert(e.message);
-        console.error(e);
-      }
+      const res = await fetch(`https://raw.githubusercontent.com/${repo}/main/${arquivo}?t=${Date.now()}`);
+      usuarios = await res.json();
+      atualizarTabela();
     }
 
     function atualizarTabela() {
@@ -102,45 +157,31 @@
     }
 
     async function salvarUsuarios() {
-      try {
-        const content = JSON.stringify(usuarios, null, 2);
-        const blob = btoa(unescape(encodeURIComponent(content)));
+      const content = JSON.stringify(usuarios, null, 2);
+      const blob = btoa(unescape(encodeURIComponent(content)));
 
-        const resGet = await fetch(`https://github.com{repo}/contents/${arquivo}?t=${Date.now()}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+      const resGet = await fetch(`https://api.github.com/repos/${repo}/contents/${arquivo}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const json = await resGet.json();
 
-        if (!resGet.ok) {
-          const erroGet = await resGet.json();
-          throw new Error(`Erro ao ler SHA (${resGet.status}): ${erroGet.message}`);
-        }
+      await fetch(`https://api.github.com/repos/${repo}/contents/${arquivo}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          message: "Atualizar usuarios.json",
+          content: blob,
+          sha: json.sha
+        })
+      });
 
-        const json = await resGet.json();
-
-        const resPut = await fetch(`https://github.com{repo}/contents/${arquivo}`, {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            message: "Atualizar usuarios.json",
-            content: blob,
-            sha: json.sha
-          })
-        });
-
-        if (!resPut.ok) {
-          const erroPut = await resPut.json();
-          throw new Error(`Erro ao salvar (${resPut.status}): ${erroPut.message}`);
-        }
-
-        await carregarUsuarios();
-      } catch (e) {
-        alert(e.message);
-        console.error(e);
-      }
+      carregarUsuarios();
     }
 
     carregarUsuarios();
   </script>
+</body>
+</html>
